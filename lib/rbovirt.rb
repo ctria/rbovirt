@@ -45,6 +45,7 @@ module OVIRT
       @cluster_id = cluster_id
       @api_entrypoint = api_entrypoint
       @filtered_api = filtered_api
+      @persistent_auth_cookie = nil
     end
 
     def api_version
@@ -60,6 +61,15 @@ module OVIRT
     def floppy_hook?
       xml = http_get("/capabilities")
       !(xml/"version/custom_properties/custom_property[@name='floppyinject']").empty?
+    end
+
+    def login
+      @persistent_auth_cookie = RestClient::Resource.new(@api_entrypoint)["/"].get(http_headers({:prefer => "persistent-auth"})).cookies["JSESSIONID"]
+      @persistent_auth_cookie.nil? ? false : true
+    end
+
+    def logout
+      @persistent_auth_cookie = nil
     end
 
     private
@@ -110,9 +120,13 @@ module OVIRT
     end
 
     def auth_header
-      # This is the method for strict_encode64:
-      encoded_credentials = ["#{@credentials[:username]}:#{@credentials[:password]}"].pack("m0").gsub(/\n/,'')
-      { :authorization => "Basic " + encoded_credentials }
+      if @persistent_auth_cookie.nil?
+        # This is the method for strict_encode64:
+        encoded_credentials = ["#{@credentials[:username]}:#{@credentials[:password]}"].pack("m0").gsub(/\n/,'')
+        { :authorization => "Basic " + encoded_credentials }
+      else
+        { :prefer => "persistent-auth", :cookie => "JSESSIONID=" + @persistent_auth_cookie }
+      end
     end
 
     def filter_header
